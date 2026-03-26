@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nova AI Assistant</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --surface: #111827;
+      --surface-2: #1f2937;
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --brand: #22d3ee;
+      --brand-2: #a78bfa;
+    }
+    body.light {
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --surface-2: #eef2ff;
+      --text: #0f172a;
+      --muted: #475569;
+      --brand: #0ea5e9;
+      --brand-2: #7c3aed;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, Arial, sans-serif;
+      background: radial-gradient(1200px 700px at 10% -20%, var(--brand-2), transparent), var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 320px 1fr;
+    }
+    aside, main { padding: 1rem; }
+    .panel {
+      background: color-mix(in srgb, var(--surface) 94%, black);
+      border: 1px solid color-mix(in srgb, var(--muted) 25%, transparent);
+      border-radius: 16px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+    h1, h3 { margin: 0 0 0.75rem; }
+    label { font-size: 0.85rem; color: var(--muted); display: block; margin: 0.6rem 0 0.25rem; }
+    input, textarea, select, button {
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid color-mix(in srgb, var(--muted) 35%, transparent);
+      background: var(--surface-2);
+      color: var(--text);
+      padding: 0.55rem 0.7rem;
+      font: inherit;
+    }
+    textarea { min-height: 88px; resize: vertical; }
+    button {
+      cursor: pointer;
+      border: none;
+      background: linear-gradient(95deg, var(--brand), var(--brand-2));
+      color: white;
+      font-weight: 600;
+    }
+    .chat {
+      height: calc(100vh - 170px);
+      overflow-y: auto;
+      padding-right: 0.3rem;
+    }
+    .msg { padding: 0.8rem 1rem; border-radius: 14px; margin: 0.6rem 0; white-space: pre-wrap; line-height: 1.4; }
+    .user { background: color-mix(in srgb, var(--brand) 22%, var(--surface)); margin-left: 5rem; }
+    .assistant { background: var(--surface); margin-right: 5rem; border: 1px solid color-mix(in srgb, var(--muted) 25%, transparent); }
+    .composer { display: grid; grid-template-columns: 1fr auto; gap: 0.65rem; margin-top: 0.7rem; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+    .muted { color: var(--muted); font-size: 0.85rem; }
+    @media (max-width: 1000px) { body { grid-template-columns: 1fr; } .user,.assistant{ margin-inline:0;} }
+  </style>
+</head>
+<body>
+  <aside>
+    <div class="panel">
+      <h1>Nova</h1>
+      <p class="muted">Premium customizable AI assistant app.</p>
+      <label>Theme</label>
+      <select id="theme">
+        <option value="dark">Dark</option>
+        <option value="light">Light</option>
+      </select>
+      <label>Model</label>
+      <input id="model" value="gpt-4.1-mini" />
+      <div class="row">
+        <div>
+          <label>Temp</label>
+          <input id="temperature" type="number" min="0" max="2" step="0.1" value="0.7" />
+        </div>
+        <div>
+          <label>Max tokens</label>
+          <input id="maxTokens" type="number" min="64" max="4096" value="700" />
+        </div>
+      </div>
+      <label>Provider</label>
+      <select id="provider">
+        <option value="openai">OpenAI</option>
+        <option value="custom">Custom OpenAI-compatible</option>
+      </select>
+      <label>Custom Base URL (optional)</label>
+      <input id="baseUrl" placeholder="https://your-endpoint/v1" />
+      <label>API key (saved locally in browser)</label>
+      <input id="apiKey" type="password" placeholder="sk-..." />
+      <label>System Prompt</label>
+      <textarea id="systemPrompt">You are Nova, a premium AI assistant. Be accurate, concise, and practical.</textarea>
+      <div class="row" style="margin-top:0.7rem">
+        <button id="saveBtn">Save Settings</button>
+        <button id="clearBtn" type="button">New Chat</button>
+      </div>
+    </div>
+  </aside>
+
+  <main>
+    <div class="panel" style="height: calc(100vh - 2rem); display:flex; flex-direction:column;">
+      <h3>Conversation</h3>
+      <div id="chat" class="chat"></div>
+      <div class="composer">
+        <textarea id="prompt" placeholder="Ask anything..."></textarea>
+        <button id="sendBtn">Send</button>
+      </div>
+      <p id="status" class="muted">Ready.</p>
+    </div>
+  </main>
+
+<script>
+const defaults = {
+  model: "gpt-4.1-mini",
+  temperature: 0.7,
+  maxOutputTokens: 700,
+  systemPrompt: "You are Nova, a premium AI assistant. Be accurate, concise, and practical.",
+  provider: "openai",
+  apiBaseUrl: "",
+  apiKey: "",
+  theme: "dark"
+};
+
+let state = {
+  messages: [],
+  settings: loadSettings()
+};
+
+function loadSettings() {
+  try { return { ...defaults, ...JSON.parse(localStorage.getItem("nova-settings") || "{}") }; }
+  catch { return { ...defaults }; }
+}
+
+function saveSettings() {
+  const settings = {
+    model: model.value.trim(),
+    temperature: Number(temperature.value),
+    maxOutputTokens: Number(maxTokens.value),
+    systemPrompt: systemPrompt.value.trim(),
+    provider: provider.value,
+    apiBaseUrl: baseUrl.value.trim(),
+    apiKey: apiKey.value.trim(),
+    theme: theme.value
+  };
+  state.settings = settings;
+  localStorage.setItem("nova-settings", JSON.stringify(settings));
+  applyTheme();
+  status.textContent = "Settings saved.";
+}
+
+function applyTheme() {
+  document.body.classList.toggle("light", state.settings.theme === "light");
+}
+
+function bindSettings() {
+  model.value = state.settings.model;
+  temperature.value = state.settings.temperature;
+  maxTokens.value = state.settings.maxOutputTokens;
+  systemPrompt.value = state.settings.systemPrompt;
+  provider.value = state.settings.provider;
+  baseUrl.value = state.settings.apiBaseUrl;
+  apiKey.value = state.settings.apiKey;
+  theme.value = state.settings.theme;
+  applyTheme();
+}
+
+function render() {
+  chat.innerHTML = "";
+  for (const m of state.messages) {
+    const div = document.createElement("div");
+    div.className = `msg ${m.role}`;
+    div.textContent = m.content;
+    chat.appendChild(div);
+  }
+  chat.scrollTop = chat.scrollHeight;
+}
+
+async function sendMessage() {
+  const text = prompt.value.trim();
+  if (!text) return;
+  const userMessage = { role: "user", content: text };
+  state.messages.push(userMessage);
+  prompt.value = "";
+  render();
+  status.textContent = "Thinking...";
+
+  try {
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: state.messages,
+        settings: {
+          model: state.settings.model,
+          temperature: state.settings.temperature,
+          max_output_tokens: state.settings.maxOutputTokens,
+          system_prompt: state.settings.systemPrompt,
+          provider: state.settings.provider,
+          api_base_url: state.settings.apiBaseUrl || null,
+          api_key: state.settings.apiKey || null
+        }
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || "Request failed");
+    }
+
+    const data = await res.json();
+    state.messages.push({ role: "assistant", content: data.content || "(empty response)" });
+    render();
+    status.textContent = data.is_demo
+      ? "Demo mode response. Add API key for live AI results."
+      : `Done · ${data.model}`;
+  } catch (e) {
+    state.messages.push({ role: "assistant", content: `Error: ${e.message}` });
+    render();
+    status.textContent = "Failed.";
+  }
+}
+
+saveBtn.onclick = saveSettings;
+clearBtn.onclick = () => { state.messages = []; render(); status.textContent = "New chat started."; };
+sendBtn.onclick = sendMessage;
+prompt.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+
+bindSettings();
+render();
+</script>
+</body>
+</html>
